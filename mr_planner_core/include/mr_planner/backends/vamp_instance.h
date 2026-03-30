@@ -100,6 +100,10 @@ public:
                                                       const std::vector<RobotPose> &poses,
                                                       float padding) const override;
 
+    // Returns [(cx, cy, cz, radius), ...] for every robot sphere at the given poses.
+    std::vector<std::array<float, 4>> getSpherePoses(const std::vector<RobotPose> &poses,
+                                                     float padding = 0.0f) const;
+
     void clearRobotAttachments();
     void setRobotAttachment(int robot_id, const vamp::collision::Attachment<float> &attachment);
     void attachObjectToRobot(const std::string &name,
@@ -158,6 +162,44 @@ public:
         const PlanInstance::InverseKinematicsOptions &options) override;
     void printKnownObjects() const override;
 
+    std::vector<Object> getSceneObjects() const override
+    {
+        std::lock_guard<std::mutex> lock(objects_mutex_);
+        std::vector<Object> result;
+        result.reserve(objects_.size());
+        for (const auto &kv : objects_)
+        {
+            Object obj = kv.second;
+            // For attached objects, update x/y/z to reflect the current world pose
+            // derived from the robot shadow, so callers always get a live position.
+            if (obj.state == Object::State::Attached &&
+                obj.robot_id >= 0 &&
+                static_cast<std::size_t>(obj.robot_id) < robot_shadow_.size() &&
+                !robot_shadow_[static_cast<std::size_t>(obj.robot_id)].joint_values.empty())
+            {
+                const Eigen::Isometry3f ee_tf =
+                    endEffectorTransform(static_cast<std::size_t>(obj.robot_id),
+                                        robot_shadow_[static_cast<std::size_t>(obj.robot_id)]);
+                const Eigen::Isometry3f rel_tf = attachmentTransformFromObject(obj);
+                const Eigen::Isometry3f world_tf = ee_tf * rel_tf;
+                const Eigen::Vector3f t = world_tf.translation();
+                obj.x = static_cast<double>(t.x());
+                obj.y = static_cast<double>(t.y());
+                obj.z = static_cast<double>(t.z());
+                Eigen::Quaternionf q(world_tf.linear());
+                if (q.norm() > 1e-6F)
+                {
+                    q.normalize();
+                }
+                obj.qx = static_cast<double>(q.x());
+                obj.qy = static_cast<double>(q.y());
+                obj.qz = static_cast<double>(q.z());
+                obj.qw = static_cast<double>(q.w());
+            }
+            result.push_back(std::move(obj));
+        }
+        return result;
+    }
 
 private:
     static constexpr std::size_t kMaxSubsetSize = (kRobotCount < 2U) ? kRobotCount : static_cast<std::size_t>(2);
@@ -1485,6 +1527,71 @@ PlanInstance::PointCloud VampInstance<RobotTs...>::filterSelfFromPointCloud(
     }
 
     return filtered;
+}
+
+template <typename... RobotTs>
+std::vector<std::array<float, 4>> VampInstance<RobotTs...>::getSpherePoses(
+    const std::vector<RobotPose> &poses,
+    float padding) const
+{
+    if (padding < 0.0F)
+    {
+        padding = 0.0F;
+    }
+
+    PoseArray gathered = gatherPoses(poses, true);
+
+    std::vector<std::array<float, 4>> result;
+    result.reserve(256);
+
+    auto append_spheres_for_robot = [&](auto index_tag)
+    {
+        constexpr std::size_t Index = decltype(index_tag)::value;
+        if (Index >= kRobotCount)
+        {
+            return;
+        }
+        const RobotPose *pose_ptr = gathered[Index];
+        if (!pose_ptr)
+        {
+            return;
+        }
+
+        using Robot = RobotAt<Index>;
+        typename Robot::template Spheres<kRake> spheres{};
+        Robot::sphere_fk(configurationBlockFromPose<Robot>(*pose_ptr), spheres);
+
+        const Eigen::Isometry3f base_tf = base_transforms_[Index];
+        for (std::size_t s = 0; s < Robot::n_spheres; ++s)
+        {
+            const float lx = static_cast<float>(spheres.x[{s, 0}]);
+            const float ly = static_cast<float>(spheres.y[{s, 0}]);
+            const float lz = static_cast<float>(spheres.z[{s, 0}]);
+            const float radius = static_cast<float>(spheres.r[{s, 0}]) + padding;
+            const Eigen::Vector3f world = base_tf * Eigen::Vector3f(lx, ly, lz);
+            result.push_back({world.x(), world.y(), world.z(), radius});
+        }
+
+        std::optional<vamp::collision::Attachment<float>> attachment;
+        {
+            std::lock_guard<std::mutex> lock(objects_mutex_);
+            attachment = attachments_[Index];
+        }
+
+        if (attachment)
+        {
+            const Eigen::Isometry3f ee_tf = endEffectorTransformForRobot<Index>(*pose_ptr);
+            attachment->pose(ee_tf);
+            for (const auto &s : attachment->posed_spheres)
+            {
+                result.push_back({s.x, s.y, s.z, s.r + padding});
+            }
+        }
+    };
+
+    for_each_index(std::make_index_sequence<kRobotCount>{}, append_spheres_for_robot);
+
+    return result;
 }
 
 

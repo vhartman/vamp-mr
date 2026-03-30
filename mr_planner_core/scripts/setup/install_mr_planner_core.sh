@@ -22,6 +22,7 @@ Options:
   --prefix <path>         Install prefix (default: /usr/local)
   --build-dir <path>      Build directory (default: /tmp/mr_planner_core_build.XXXXXX)
   --type <Release|Debug>  Build type (default: Release)
+  --jobs <N>              Parallel build jobs (default: max(1, nproc-1))
   --no-python             Disable Python bindings
   --no-vamp               Disable VAMP backend (also disables CLI apps + Python bindings)
   --sudo                  Force sudo for install/copy steps
@@ -39,9 +40,22 @@ Notes:
 EOF
 }
 
+detect_build_jobs() {
+  if command -v nproc >/dev/null 2>&1; then
+    local cpu_count
+    cpu_count="$(nproc)"
+    if [[ "${cpu_count}" -gt 1 ]]; then
+      echo "$((cpu_count - 1))"
+      return
+    fi
+  fi
+  echo 1
+}
+
 PREFIX="/usr/local"
 BUILD_DIR=""
 BUILD_TYPE="Release"
+BUILD_JOBS="$(detect_build_jobs)"
 ENABLE_PYTHON=1
 ENABLE_VAMP=1
 FORCE_SUDO=0
@@ -56,6 +70,7 @@ while [[ $# -gt 0 ]]; do
     --prefix) PREFIX="${2:-}"; shift 2 ;;
     --build-dir) BUILD_DIR="${2:-}"; shift 2 ;;
     --type) BUILD_TYPE="${2:-}"; shift 2 ;;
+    --jobs) BUILD_JOBS="${2:-}"; shift 2 ;;
     --no-python) ENABLE_PYTHON=0; shift ;;
     --no-vamp) ENABLE_VAMP=0; ENABLE_PYTHON=0; shift ;;
     --sudo) FORCE_SUDO=1; shift ;;
@@ -72,8 +87,14 @@ if [[ -z "${BUILD_DIR}" ]]; then
   BUILD_DIR="$(mktemp -d "/tmp/mr_planner_core_build.XXXXXX")"
 fi
 
+if ! [[ "${BUILD_JOBS}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "[error] --jobs must be a positive integer (got: ${BUILD_JOBS})" >&2
+  exit 2
+fi
+
 echo "[info] build dir: ${BUILD_DIR}" >&2
 echo "[info] install prefix: ${PREFIX}" >&2
+echo "[info] parallel build jobs: ${BUILD_JOBS}" >&2
 
 if [[ "${FORCE_SUDO}" == "1" && "${NO_SUDO}" == "1" ]]; then
   echo "[error] --sudo and --no-sudo are mutually exclusive" >&2
@@ -128,7 +149,7 @@ cmake -S "${REPO_ROOT}/mr_planner_core" -B "${BUILD_DIR}" \
   -DMR_PLANNER_CORE_ENABLE_VAMP="$([[ "${ENABLE_VAMP}" == "1" ]] && echo ON || echo OFF)" \
   -DMR_PLANNER_CORE_ENABLE_PYTHON="$([[ "${ENABLE_PYTHON}" == "1" ]] && echo ON || echo OFF)"
 
-cmake --build "${BUILD_DIR}" -j
+cmake --build "${BUILD_DIR}" --parallel "${BUILD_JOBS}"
 ${SUDO} cmake --install "${BUILD_DIR}"
 
 if [[ "${INSTALL_CRICKET}" != "1" ]]; then
@@ -217,7 +238,7 @@ if [[ -z "${FKCC_GEN}" ]]; then
     "${MICROMAMBA_BIN}" run -p "${CRICKET_ENV}" cmake -S "${CRICKET_DIR}" -B "${CRICKET_BUILD_MAMBA}" \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX="${CRICKET_ENV}" >/dev/null
-    "${MICROMAMBA_BIN}" run -p "${CRICKET_ENV}" cmake --build "${CRICKET_BUILD_MAMBA}" -j >/dev/null
+    "${MICROMAMBA_BIN}" run -p "${CRICKET_ENV}" cmake --build "${CRICKET_BUILD_MAMBA}" --parallel "${BUILD_JOBS}" >/dev/null
     ${SUDO} "${MICROMAMBA_BIN}" run -p "${CRICKET_ENV}" cmake --install "${CRICKET_BUILD_MAMBA}" >/dev/null
   fi
 

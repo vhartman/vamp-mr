@@ -25,7 +25,9 @@ namespace vamp_env
         PandaQuad,
         PandaHex,
         PandaOct,
-        PandaDec
+        PandaDec,
+        DualUR5,
+        QuadUR5
     };
 
     struct EnvironmentConfig

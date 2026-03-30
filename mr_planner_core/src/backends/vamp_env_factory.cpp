@@ -727,6 +727,28 @@ std::optional<EnvironmentConfig> make_environment_config(const std::string &name
             {},
             std::nullopt};
     }
+    if (name == "dual_ur5")
+    {
+        return EnvironmentConfig{
+            name,
+            "ur5_dual_arm",
+            {"ur5_0_arm", "ur5_1_arm"},
+            {},
+            VampVariant::DualUR5,
+            {},
+            std::nullopt};
+    }
+    if (name == "quad_ur5")
+    {
+        return EnvironmentConfig{
+            name,
+            "ur5_quad_arm",
+            {"ur5_0_arm", "ur5_1_arm", "ur5_2_arm", "ur5_3_arm"},
+            {},
+            VampVariant::QuadUR5,
+            {},
+            std::nullopt};
+    }
     return std::nullopt;
 }
 
@@ -750,6 +772,10 @@ std::shared_ptr<PlanInstance> make_vamp_instance(VampVariant variant)
         return std::make_shared<VampPandaOctInstance>();
     case VampVariant::PandaDec:
         return std::make_shared<VampPandaDecInstance>();
+    case VampVariant::DualUR5:
+        return std::make_shared<VampDualUR5Instance>();
+    case VampVariant::QuadUR5:
+        return std::make_shared<VampQuadUR5Instance>();
     }
     throw std::runtime_error("Unsupported VampVariant");
 }
@@ -1064,6 +1090,45 @@ std::optional<std::vector<Eigen::Isometry3d>> default_base_transforms(const Envi
                 height);
         }
         return transforms;
+    }
+    case VampVariant::DualUR5:
+    {
+        if (transforms.size() < 2)
+        {
+            return std::nullopt;
+        }
+        // Match the dual_gp4 URDF: right arm faces the left arm with ~180deg yaw.
+        const Eigen::AngleAxisd right_rotation(3.13792336, Eigen::Vector3d::UnitZ());
+        transforms[0].translation() = Eigen::Vector3d(0.0, 0.0, 0.);
+        transforms[1].linear() = right_rotation.toRotationMatrix();
+        transforms[1].translation() = Eigen::Vector3d(0.88128092, -0.01226491, 0.);
+        return transforms;
+    }
+    case VampVariant::QuadUR5:
+    {
+        if (transforms.size() < 4)
+        {
+            return std::nullopt;
+        }
+        if (config.environment_name == "quad_ur5")
+        {
+            // Match the panda_four URDF: four arms on a square table, yawed about Z.
+            const std::array<double, 4> yaws = {2.28, 0.66, -0.66, -2.28};
+            const std::array<Eigen::Vector3d, 4> translations = {
+                Eigen::Vector3d(0.36, -0.36, 0.0),
+                Eigen::Vector3d(-0.36, -0.36, 0.0),
+                Eigen::Vector3d(-0.36, 0.36, 0.0),
+                Eigen::Vector3d(0.36, 0.36, 0.0)};
+
+            for (std::size_t i = 0; i < yaws.size(); ++i)
+            {
+                const Eigen::AngleAxisd rotation(yaws[i], Eigen::Vector3d::UnitZ());
+                transforms[i].linear() = rotation.toRotationMatrix();
+                transforms[i].translation() = translations[i];
+            }
+            return transforms;
+        }
+        return std::nullopt;
     }
     }
     return std::nullopt;

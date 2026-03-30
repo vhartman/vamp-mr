@@ -1443,6 +1443,83 @@ public:
         return pointcloud_to_numpy(filtered);
     }
 
+    // Returns a list of (cx, cy, cz, radius) tuples for every robot sphere at the given config.
+    std::vector<std::tuple<float, float, float, float>> get_sphere_poses(
+        const std::vector<std::vector<double>> &joint_positions,
+        float padding = 0.0f) const
+    {
+        const int num_robots = instance_->getNumberOfRobots();
+        if (static_cast<int>(joint_positions.size()) != num_robots)
+        {
+            throw std::runtime_error("joint_positions robot count mismatch");
+        }
+
+        std::vector<RobotPose> poses;
+        poses.reserve(static_cast<std::size_t>(num_robots));
+        for (int rid = 0; rid < num_robots; ++rid)
+        {
+            RobotPose pose = instance_->initRobotPose(rid);
+            pose.joint_values = joint_positions[static_cast<std::size_t>(rid)];
+            poses.push_back(std::move(pose));
+        }
+
+        const auto spheres = instance_->getSpherePoses(poses, padding);
+
+        std::vector<std::tuple<float, float, float, float>> result;
+        result.reserve(spheres.size());
+        for (const auto &s : spheres)
+        {
+            result.emplace_back(s[0], s[1], s[2], s[3]);
+        }
+        return result;
+    }
+
+    py::list get_scene_objects() const
+    {
+        static const std::array<const char *, 4> kStateNames = {"static", "attached", "supported", "handover"};
+        static const std::array<const char *, 4> kTypeNames  = {"box", "sphere", "cylinder", "mesh"};
+
+        const auto objects = instance_->getSceneObjects();
+        py::list result;
+        for (const auto &obj : objects)
+        {
+            py::dict d;
+            d["name"]        = obj.name;
+            d["type"]        = kTypeNames[static_cast<std::size_t>(obj.shape)];
+            d["state"]       = kStateNames[static_cast<std::size_t>(obj.state)];
+            d["robot_id"]    = obj.robot_id;
+            d["parent_link"] = obj.parent_link;
+
+            // World pose (for static/supported/handover) or last known world pose (attached).
+            d["position"]   = py::make_tuple(obj.x, obj.y, obj.z);
+            d["quaternion"] = py::make_tuple(obj.qx, obj.qy, obj.qz, obj.qw);
+
+            // EE-relative attachment transform (only meaningful when state == "attached").
+            d["attach_position"]   = py::make_tuple(obj.x_attach, obj.y_attach, obj.z_attach);
+            d["attach_quaternion"] = py::make_tuple(obj.qx_attach, obj.qy_attach, obj.qz_attach, obj.qw_attach);
+
+            switch (obj.shape)
+            {
+            case Object::Shape::Box:
+                d["size"] = py::make_tuple(obj.length, obj.width, obj.height);
+                break;
+            case Object::Shape::Sphere:
+                d["radius"] = obj.radius;
+                break;
+            case Object::Shape::Cylinder:
+                d["radius"] = obj.radius;
+                d["length"] = (obj.length > 0.0) ? obj.length : obj.height;
+                break;
+            case Object::Shape::Mesh:
+                d["mesh_path"] = obj.mesh_path;
+                break;
+            }
+
+            result.append(std::move(d));
+        }
+        return result;
+    }
+
     std::optional<Object> infer_attached_object_from_pointcloud(const py::object &points_obj,
                                                                 int robot_id,
                                                                 const std::vector<double> &joint_positions,
@@ -1644,6 +1721,8 @@ public:
     }
 
     void print_known_objects() const { instance_->printKnownObjects(); }
+
+    
 
     py::dict plan(const std::string &planner,
                   double planning_time,
@@ -3328,6 +3407,11 @@ PYBIND11_MODULE(_mr_planner_core, m)
         .def("remove_object", &VampEnvironment::remove_object, py::arg("name"))
         .def("has_object", &VampEnvironment::has_object, py::arg("name"))
         .def("get_object", &VampEnvironment::get_object, py::arg("name"))
+        .def("get_scene_objects",
+             &VampEnvironment::get_scene_objects,
+             "Return all scene objects as a list of dicts with keys: name, type, state, robot_id, "
+             "parent_link, position, quaternion, attach_position, attach_quaternion, "
+             "and shape-specific keys (size / radius / length / mesh_path).")
         .def("set_pointcloud",
              &VampEnvironment::set_pointcloud,
              py::arg("points"),
@@ -3342,6 +3426,11 @@ PYBIND11_MODULE(_mr_planner_core, m)
              py::arg("points"),
              py::arg("joint_positions"),
              py::arg("padding") = 0.0)
+        .def("get_sphere_poses",
+             &VampEnvironment::get_sphere_poses,
+             py::arg("joint_positions"),
+             py::arg("padding") = 0.0,
+             "Return [(cx, cy, cz, radius), ...] for every robot sphere at the given joint configuration.")
         .def("infer_attached_object_from_pointcloud",
              &VampEnvironment::infer_attached_object_from_pointcloud,
              py::arg("points"),

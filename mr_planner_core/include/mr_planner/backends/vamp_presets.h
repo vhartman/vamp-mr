@@ -54,6 +54,12 @@ extern template class VampInstance<
     vamp::robots::Panda,
     vamp::robots::Panda>;
 
+extern template class VampInstance<vamp::robots::UR5, vamp::robots::UR5>;
+extern template class VampInstance<vamp::robots::UR5, vamp::robots::UR5, vamp::robots::UR5, vamp::robots::UR5>;
+
+using VampDualUR5Instance = VampInstance<vamp::robots::UR5, vamp::robots::UR5>;
+using VampQuadUR5Instance = VampInstance<vamp::robots::UR5, vamp::robots::UR5, vamp::robots::UR5, vamp::robots::UR5>;
+
 using VampDualGp4Instance = VampInstance<vamp::robots::GP4, vamp::robots::GP4>;
 using VampQuadGp4Instance = VampInstance<
     vamp::robots::GP4,

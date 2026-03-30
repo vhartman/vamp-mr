@@ -266,6 +266,12 @@ public:
         throw std::runtime_error("Not implemented");
     }
 
+    virtual std::vector<std::array<float, 4>> getSpherePoses(const std::vector<RobotPose> &/*poses*/,
+                                                             float /*padding*/ = 0.0f) const
+    {
+        throw std::runtime_error("Not implemented");
+    }
+
     virtual std::uint64_t environmentVersion() const { return environment_version_.load(); }
     // Save/restore full planning scene snapshots
     virtual void pushScene() { throw std::runtime_error("Not implemented"); };
@@ -377,6 +383,16 @@ public:
             }
         }
         return attached_objects;
+    }
+
+    // Returns all objects currently in the scene.
+    virtual std::vector<Object> getSceneObjects() const {
+        std::vector<Object> result;
+        result.reserve(objects_.size());
+        for (const auto &kv : objects_) {
+            result.push_back(kv.second);
+        }
+        return result;
     }
 
 protected:

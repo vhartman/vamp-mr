@@ -46,3 +46,13 @@ template class VampInstance<
     vamp::robots::Panda,
     vamp::robots::Panda,
     vamp::robots::Panda>;
+
+template class VampInstance<
+    vamp::robots::UR5,
+    vamp::robots::UR5>;
+
+template class VampInstance<
+    vamp::robots::UR5,
+    vamp::robots::UR5,
+    vamp::robots::UR5,
+    vamp::robots::UR5>;
