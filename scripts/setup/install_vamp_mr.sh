@@ -28,6 +28,7 @@ Examples:
 Options:
   --prefix <path>           Install prefix (default: /usr/local)
   --type <Release|Debug>    Build type (default: Release)
+  --jobs <N>                Parallel build jobs (default: max(1, nproc-1))
   --with-vamp               Build + install ./vamp into the same prefix
 
   --core-build-dir <path>   (default: <repo>/mr_planner_core/build)
@@ -43,8 +44,21 @@ Notes:
 EOF
 }
 
+detect_build_jobs() {
+  if command -v nproc >/dev/null 2>&1; then
+    local cpu_count
+    cpu_count="$(nproc)"
+    if [[ "${cpu_count}" -gt 1 ]]; then
+      echo "$((cpu_count - 1))"
+      return
+    fi
+  fi
+  echo 1
+}
+
 PREFIX="/usr/local"
 BUILD_TYPE="Release"
+BUILD_JOBS="$(detect_build_jobs)"
 
 WITH_VAMP=0
 CORE_BUILD_DIR="${REPO_ROOT}/mr_planner_core/build"
@@ -58,6 +72,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --prefix) PREFIX="${2:-}"; shift 2 ;;
     --type) BUILD_TYPE="${2:-}"; shift 2 ;;
+    --jobs) BUILD_JOBS="${2:-}"; shift 2 ;;
     --with-vamp) WITH_VAMP=1; shift ;;
     --core-build-dir) CORE_BUILD_DIR="${2:-}"; shift 2 ;;
     --lego-build-dir) LEGO_BUILD_DIR="${2:-}"; shift 2 ;;
@@ -68,6 +83,11 @@ while [[ $# -gt 0 ]]; do
     *) echo "[error] unknown arg: $1" >&2; usage; exit 2 ;;
   esac
 done
+
+if ! [[ "${BUILD_JOBS}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "[error] --jobs must be a positive integer (got: ${BUILD_JOBS})" >&2
+  exit 2
+fi
 
 if [[ "${FORCE_SUDO}" == "1" && "${NO_SUDO}" == "1" ]]; then
   echo "[error] --sudo and --no-sudo are mutually exclusive" >&2
@@ -100,6 +120,7 @@ fi
 
 echo "[info] prefix: ${PREFIX}" >&2
 echo "[info] build type: ${BUILD_TYPE}" >&2
+echo "[info] parallel build jobs: ${BUILD_JOBS}" >&2
 
 if [[ "${WITH_VAMP}" == "1" ]]; then
   echo "[info] building + installing bundled VAMP -> ${PREFIX}" >&2
@@ -107,7 +128,7 @@ if [[ "${WITH_VAMP}" == "1" ]]; then
     -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
     -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
     -DVAMP_INSTALL_CPP_LIBRARY=ON -DVAMP_BUILD_PYTHON_BINDINGS=OFF
-  cmake --build "${VAMP_BUILD_DIR}" -j
+  cmake --build "${VAMP_BUILD_DIR}" --parallel "${BUILD_JOBS}"
   ${SUDO} cmake --install "${VAMP_BUILD_DIR}"
 fi
 
@@ -116,6 +137,7 @@ echo "[info] installing mr_planner_core -> ${PREFIX} (build dir: ${CORE_BUILD_DI
   --prefix "${PREFIX}" \
   --build-dir "${CORE_BUILD_DIR}" \
   --type "${BUILD_TYPE}" \
+  --jobs "${BUILD_JOBS}" \
   $([[ "${FORCE_SUDO}" == "1" ]] && echo --sudo || true) \
   $([[ "${NO_SUDO}" == "1" ]] && echo --no-sudo || true)
 
@@ -124,5 +146,5 @@ cmake -S "${REPO_ROOT}/mr_planner_lego" -B "${LEGO_BUILD_DIR}" \
   -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
   -DMR_PLANNER_LEGO_USE_BUNDLED_CORE=OFF
 
-cmake --build "${LEGO_BUILD_DIR}" -j
+cmake --build "${LEGO_BUILD_DIR}" --parallel "${BUILD_JOBS}"
 ${SUDO} cmake --install "${LEGO_BUILD_DIR}"
