@@ -1099,9 +1099,9 @@ std::optional<std::vector<Eigen::Isometry3d>> default_base_transforms(const Envi
         }
         // Match the dual_gp4 URDF: right arm faces the left arm with ~180deg yaw.
         const Eigen::AngleAxisd right_rotation(3.13792336, Eigen::Vector3d::UnitZ());
-        transforms[0].translation() = Eigen::Vector3d(0.0, 0.0, 0.);
+        transforms[0].translation() = Eigen::Vector3d(0.0, 0.0, -0.9144); // for offsetting the urdf
         transforms[1].linear() = right_rotation.toRotationMatrix();
-        transforms[1].translation() = Eigen::Vector3d(0.88128092, -0.01226491, 0.);
+        transforms[1].translation() = Eigen::Vector3d(0.88128092, -0.01226491, -0.9144);
         return transforms;
     }
     case VampVariant::QuadUR5:
@@ -1115,10 +1115,10 @@ std::optional<std::vector<Eigen::Isometry3d>> default_base_transforms(const Envi
             // Match the panda_four URDF: four arms on a square table, yawed about Z.
             const std::array<double, 4> yaws = {2.28, 0.66, -0.66, -2.28};
             const std::array<Eigen::Vector3d, 4> translations = {
-                Eigen::Vector3d(0.36, -0.36, 0.0),
-                Eigen::Vector3d(-0.36, -0.36, 0.0),
-                Eigen::Vector3d(-0.36, 0.36, 0.0),
-                Eigen::Vector3d(0.36, 0.36, 0.0)};
+                Eigen::Vector3d(0.36, -0.36, -0.9144),
+                Eigen::Vector3d(-0.36, -0.36, -0.9144),
+                Eigen::Vector3d(-0.36, 0.36, -0.9144),
+                Eigen::Vector3d(0.36, 0.36, -0.9144)};
 
             for (std::size_t i = 0; i < yaws.size(); ++i)
             {
