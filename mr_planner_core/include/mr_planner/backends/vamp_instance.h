@@ -1543,6 +1543,8 @@ std::vector<std::array<float, 4>> VampInstance<RobotTs...>::getSpherePoses(
 
     std::vector<std::array<float, 4>> result;
     result.reserve(256);
+    std::vector<std::array<float, 4>> attachment_result;
+    attachment_result.reserve(64);
 
     auto append_spheres_for_robot = [&](auto index_tag)
     {
@@ -1584,12 +1586,17 @@ std::vector<std::array<float, 4>> VampInstance<RobotTs...>::getSpherePoses(
             attachment->pose(ee_tf);
             for (const auto &s : attachment->posed_spheres)
             {
-                result.push_back({s.x, s.y, s.z, s.r + padding});
+                attachment_result.push_back({s.x, s.y, s.z, s.r + padding});
             }
         }
     };
 
     for_each_index(std::make_index_sequence<kRobotCount>{}, append_spheres_for_robot);
+
+    if (!attachment_result.empty())
+    {
+        result.insert(result.end(), attachment_result.begin(), attachment_result.end());
+    }
 
     return result;
 }
