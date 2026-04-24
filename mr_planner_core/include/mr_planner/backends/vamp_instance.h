@@ -3021,22 +3021,6 @@ bool VampInstance<RobotTs...>::checkMultiRobotSweep(const MRTrajectory &trajecto
 }
 
 
-template <typename... RobotTs>
-template <typename Robot>
-double VampInstance<RobotTs...>::computeDistanceImpl(const RobotPose &a, const RobotPose &b)
-{
-    ensurePoseDimension<Robot>(a);
-    ensurePoseDimension<Robot>(b);
-
-    double sum_l1 = 0.0;
-    for (std::size_t i = 0; i < Robot::dimension; ++i)
-    {
-        const double diff = a.joint_values[i] - b.joint_values[i];
-        sum_l1 += std::abs(diff);
-    }
-    return sum_l1;
-}
-
 // template <typename... RobotTs>
 // template <typename Robot>
 // double VampInstance<RobotTs...>::computeDistanceImpl(const RobotPose &a, const RobotPose &b)
@@ -3044,14 +3028,30 @@ double VampInstance<RobotTs...>::computeDistanceImpl(const RobotPose &a, const R
 //     ensurePoseDimension<Robot>(a);
 //     ensurePoseDimension<Robot>(b);
 
-//     double l_inf = 0.0;
+//     double sum_l1 = 0.0;
 //     for (std::size_t i = 0; i < Robot::dimension; ++i)
 //     {
 //         const double diff = a.joint_values[i] - b.joint_values[i];
-//         l_inf = std::max(l_inf, std::abs(diff));
+//         sum_l1 += std::abs(diff);
 //     }
-//     return l_inf;
+//     return sum_l1;
 // }
+
+template <typename... RobotTs>
+template <typename Robot>
+double VampInstance<RobotTs...>::computeDistanceImpl(const RobotPose &a, const RobotPose &b)
+{
+    ensurePoseDimension<Robot>(a);
+    ensurePoseDimension<Robot>(b);
+
+    double l_inf = 0.0;
+    for (std::size_t i = 0; i < Robot::dimension; ++i)
+    {
+        const double diff = a.joint_values[i] - b.joint_values[i];
+        l_inf = std::max(l_inf, std::abs(diff));
+    }
+    return l_inf;
+}
 
 template <typename... RobotTs>
 template <typename Robot>
